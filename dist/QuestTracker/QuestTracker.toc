@@ -1,0 +1,6 @@
+## Interface: 20400
+## Title: QuestTracker
+## Notes: Shows your quest (with kill progress) on mob tooltips.
+## Author: Lankhmar & Claude
+## SavedVariablesPerCharacter: QuestTrackerDB
+QuestTracker.lua

@@ -1,0 +1,54 @@
+{
+  "contentVersion": "2026.07.25-1912",
+  "baseUrl": "https://raw.githubusercontent.com/ryanfinity/tbc-client/main/dist/",
+  "realmlist": "",
+  "launcher": {
+    "version": "1.0.0",
+    "src": "launcher/LankhmarLauncher.exe",
+    "sha256": "1bb0be98655ad841deba2a630b28252b76930eb06c8ee3ff83bcc76b1ad5a029"
+  },
+  "components": [
+    {
+      "id": "MercPanel",
+      "name": "Merc Panel",
+      "description": "control bars for your mercenary squad",
+      "required": true,
+      "root": "Interface/AddOns/MercPanel",
+      "files": [
+        {
+          "path": "Interface/AddOns/MercPanel/MercPanel.lua",
+          "src": "MercPanel/MercPanel.lua",
+          "sha256": "41c3f1fef292772119ca80c1965be24a02abb3369519fd5924c46d8cbb1f2032",
+          "size": 34769
+        },
+        {
+          "path": "Interface/AddOns/MercPanel/MercPanel.toc",
+          "src": "MercPanel/MercPanel.toc",
+          "sha256": "6f234e121a01c8549090fd5637d9571b266e7e14504550c0d4cf3f36897882d5",
+          "size": 219
+        }
+      ]
+    },
+    {
+      "id": "QuestTracker",
+      "name": "Quest Tracker",
+      "description": "no 5-quest cap, quest mobs on tooltips",
+      "required": false,
+      "root": "Interface/AddOns/QuestTracker",
+      "files": [
+        {
+          "path": "Interface/AddOns/QuestTracker/QuestTracker.lua",
+          "src": "QuestTracker/QuestTracker.lua",
+          "sha256": "6e0cb2335ed97a489343a5e07c0644fccdbd2093ec5d07b5ec90ff479be825c5",
+          "size": 10742
+        },
+        {
+          "path": "Interface/AddOns/QuestTracker/QuestTracker.toc",
+          "src": "QuestTracker/QuestTracker.toc",
+          "sha256": "7da56a22cfac236e7df9d12c215dc9e7a28c4d224f37d721a38f46df655c1f2f",
+          "size": 200
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+## Interface: 20400
+## Title: Merc Panel
+## Notes: Control bar for your mercenary squad - raid markers, stay/follow, stances, setup.
+## Author: Lankhmar & Claude
+## SavedVariablesPerCharacter: MercPanelDB
+MercPanel.lua
