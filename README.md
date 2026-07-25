@@ -8,6 +8,29 @@ launcher once and it handles the rest, forever.
 
 ---
 
+## Server hours
+
+The realm runs **8:00 AM to midnight, Mountain Time**, every day.
+
+| | Mountain | Pacific | Central | Eastern |
+|---|---|---|---|---|
+| **Server comes up** | 8:00 AM | 7:00 AM | 9:00 AM | 10:00 AM |
+| **Server goes down** | 12:00 AM | 11:00 PM | 1:00 AM | 2:00 AM |
+
+It shuts down overnight because the server is rented by the hour — running it
+while everyone is asleep just costs money.
+
+**Outside those hours the realm will not appear on your character screen, and
+the launcher may say it cannot reach the update server.** Neither means anything
+is broken; the machine is simply off. It comes back on its own at 8:00 AM.
+
+**Wrap up before midnight.** The shutdown is on a timer and does not wait for
+players — if you are still online it will disconnect you. Your character is
+saved every minute, so you will not lose anything meaningful, but you could drop
+mid-dungeon. If Ryan is around he can keep it up later; just ask.
+
+---
+
 ## Setting up (once)
 
 **1. Get the game client.** Ryan will send you the World of Warcraft 2.4.3
@@ -88,6 +111,7 @@ Two common ones:
   half-applied update.
 - **"Could not reach the update server"** — it starts the game anyway with what
   you already have. Being unable to check for updates never stops you playing.
+  If it is outside server hours, this is expected: the machine is off.
 - **The realm doesn't show up on the character screen** — if Ryan tells you the
   server address has changed, open `realmlist.wtf` in your WoW folder with
   Notepad and replace the whole file with the one line he gives you.
