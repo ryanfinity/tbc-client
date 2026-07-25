@@ -1,11 +1,11 @@
 {
-  "contentVersion": "2026.07.25-1928",
+  "contentVersion": "2026.07.25-1934",
   "baseUrl": "https://raw.githubusercontent.com/ryanfinity/tbc-client/main/dist/",
   "realmlist": "",
   "launcher": {
-    "version": "1.0.1",
+    "version": "1.0.2",
     "src": "launcher/LankhmarLauncher.exe",
-    "sha256": "3fd0884ece693120649fa5d7cbb2e1bee469de224b2970f88c62cae2f59526b7"
+    "sha256": "0df9eef65c589f98a5d886fe7bc1040fd1e6aa534fa74abcf4ab2d55457d9024"
   },
   "components": [
     {
