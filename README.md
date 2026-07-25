@@ -14,16 +14,14 @@ launcher once and it handles the rest, forever.
 folder. Unzip it wherever you like — your Desktop is fine. It does not need to
 be installed, and it will not touch any retail WoW you already have.
 
+The realm address is already set up in that folder, so there is nothing to
+configure and no files to edit.
+
 **2. Put the launcher in that folder.** Download
 [`LankhmarLauncher.exe`](dist/launcher/LankhmarLauncher.exe?raw=1) and drop it in
 next to `WoW.exe`.
 
-**3. Set the realm address.** Open `realmlist.wtf` in the WoW folder with
-Notepad, and make the whole file read the one line Ryan gives you:
-
-    set realmlist <address Ryan sent you>
-
-**4. Run `LankhmarLauncher.exe`.** It will ask once which optional add-ons you
+**3. Run `LankhmarLauncher.exe`.** It will ask once which optional add-ons you
 want, download everything, and start the game.
 
 From then on, **always start the game with the launcher instead of `WoW.exe`.**
@@ -90,3 +88,6 @@ Two common ones:
   half-applied update.
 - **"Could not reach the update server"** — it starts the game anyway with what
   you already have. Being unable to check for updates never stops you playing.
+- **The realm doesn't show up on the character screen** — if Ryan tells you the
+  server address has changed, open `realmlist.wtf` in your WoW folder with
+  Notepad and replace the whole file with the one line he gives you.
