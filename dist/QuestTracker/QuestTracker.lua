@@ -1,21 +1,138 @@
--- QuestTracker v2.0 (rebuild of the original)
+-- QuestTracker v3.0
 --
---  * Mob tooltips show your kill quests with live progress (yellow / grey done).
---  * Blizzard's 5-quest watch frame is REMOVED and replaced with our own
---    tracker panel: no quest cap, scales to its content, draggable, position
---    and tracked quests persist per character.
---  * Shift-click quests in the quest log to add/remove them from the tracker.
+--  * Mob tooltips show your kill quests with live progress.
+--  * Blizzard's 5-quest watch frame is REMOVED and replaced with our own tracker
+--    panel: no quest cap, scales to its content, drag it by the cross on the
+--    header, position + tracked quests persist per character.
+--  * Shift-click quests in the quest log to add/remove them (Blizzard's own
+--    modifier), and the quest log's checkmark ALWAYS matches the tracker.
+--  * Double-click a quest in the tracker to open it in the quest log.
 --
--- 2.4.3 notes: no print()/wipe(); OnEvent handlers use implicit globals
--- (this/event/arg1); AddQuestWatch is capped at 5 in the client C code, which
--- is why the tracker keeps its own list and never calls it.
+-- ---------------------------------------------------------------------------
+-- WHY THE TRACKER OWNS THE LIST (measured, 2026-07-26 -- do not "simplify" this)
+--
+-- The obvious build is to let Blizzard's watch list be the single source of
+-- truth and just render it. It cannot be: the client's C code hard-caps the
+-- watch list at 5. Confirmed in game -- watching 9 quests via a direct
+-- AddQuestWatch loop (which bypasses the Lua gate at QuestLogFrame.lua:509)
+-- reported "9 tried, 5 watched", and no 6th checkmark could be made to appear.
+-- Raising MAX_WATCHABLE_QUESTS only moves the Lua gate, not the C limit.
+--
+-- So OUR list is authoritative and we draw the quest log's checkmark ourselves
+-- by post-hooking QuestLog_Update. That is safe because QuestLogFrame.lua is the
+-- ONLY file in the whole 2.4.3 FrameXML that touches the quest-watch API --
+-- nothing else reads IsQuestWatched, so nothing else can disagree with us.
+--
+-- v2.0 got this wrong and it caused the 1:1 bug: it post-hooked
+-- QuestLogTitleButton_OnClick, so one shift-click ran BOTH Blizzard's toggle
+-- (which set the checkmark) and ours (which toggled our list) -- in opposite
+-- directions, because Blizzard's list is wiped on every relog while ours
+-- persists. We now REPLACE that handler instead of hooking it, so exactly one
+-- list changes per click.
+--
+-- ---------------------------------------------------------------------------
+-- STYLE IS BLIZZARD'S, TAKEN FROM THE REAL FrameXML (extracted from the client
+-- MPQs), not from taste:
+--   font   : QuestWatchFontTemplate -> GameFontHighlight -> GameFontNormal
+--            = Fonts\FRIZQT__.TTF at height 12, shadow 1/-1 black. Every line,
+--            title and objective alike. (v2.0 used MORPHEUS -- that was the
+--            "font looks off" report.)
+--   layout : 13px per line, 4px extra gap before each new quest title.
+--   colour : title    incomplete 0.75/0.61/0, complete 1/0.82/0
+--            objective done 1/1/1 (white -- yes, BRIGHTER), todo 0.8/0.8/0.8
+--   text   : " - " prefix on objectives, no level prefix on titles.
+-- Colours are hardcoded rather than read from NORMAL_FONT_COLOR /
+-- HIGHLIGHT_FONT_COLOR on purpose: those are not defined in FrameXML Lua, and a
+-- nil global dereferenced at file scope is a LOAD-TIME error that kills the
+-- entire addon. The numbers below are those globals' values, from Fonts.xml.
+--
+-- 2.4.3 notes: no print()/wipe(); script handlers use the implicit globals
+-- (this/event/arg1); getglobal() instead of _G[].
+
+QUESTTRACKER_VERSION = "3.0"
 
 local function Msg(text)
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99QuestTracker|r: " .. text)
 end
 
 QuestTrackerDB = QuestTrackerDB or {}
-MAX_WATCHABLE_QUESTS = 10   -- silences Blizzard's cap error; its frame is hidden anyway
+
+-- Blizzard's own measurements (QuestLogFrame.lua / Fonts.xml)
+local FONT       = "Fonts\\FRIZQT__.TTF"
+local FONT_SIZE  = 12
+local LINE_STEP  = 13
+local QUEST_GAP  = 4
+local HEADER_Y   = -20      -- first quest title sits below the header line
+local CROSS_SIZE = 16
+
+local TITLE_TODO_R,  TITLE_TODO_G,  TITLE_TODO_B  = 0.75, 0.61, 0
+local TITLE_DONE_R,  TITLE_DONE_G,  TITLE_DONE_B  = 1.0,  0.82, 0
+local OBJ_DONE_R,    OBJ_DONE_G,    OBJ_DONE_B    = 1.0,  1.0,  1.0
+local OBJ_TODO_R,    OBJ_TODO_G,    OBJ_TODO_B    = 0.8,  0.8,  0.8
+
+local function ClassicFont(fs)
+    fs:SetFont(FONT, FONT_SIZE)
+    fs:SetShadowColor(0, 0, 0, 1)
+    fs:SetShadowOffset(1, -1)
+end
+
+-- ===========================================================================
+-- The watch list -- ordered quest IDs, the single source of truth
+--
+-- Keyed by quest ID, not title: titles are not unique, and v2.0's title keys
+-- broke silently when a quest was renamed or duplicated. GetQuestLink is what
+-- Blizzard itself uses for the shift-click chat link, so it is available for
+-- any real quest log entry.
+-- ===========================================================================
+local seenThisSession = {}      -- questID -> true once observed in the log
+
+local function QuestIDAt(index)
+    local link = GetQuestLink(index)
+    if not link then return nil end
+    local _, _, id = string.find(link, "|Hquest:(%d+):")
+    return tonumber(id)
+end
+
+local function Watched()
+    QuestTrackerDB.watched = QuestTrackerDB.watched or {}
+    return QuestTrackerDB.watched
+end
+
+local function TrackedAt(questID)
+    if not questID then return nil end
+    local list = Watched()
+    for i = 1, table.getn(list) do
+        if list[i] == questID then return i end
+    end
+    return nil
+end
+
+-- questID -> quest log index, for everything currently in the log
+local function BuildIndexMap()
+    local map = {}
+    for entry = 1, GetNumQuestLogEntries() do
+        local title, _, _, _, isHeader = GetQuestLogTitle(entry)
+        if title and not isHeader then
+            local id = QuestIDAt(entry)
+            if id then
+                map[id] = entry
+                seenThisSession[id] = true
+            end
+        end
+    end
+    return map
+end
+
+local function IndexForQuestID(questID)
+    if not questID then return nil end
+    for entry = 1, GetNumQuestLogEntries() do
+        local title, _, _, _, isHeader = GetQuestLogTitle(entry)
+        if title and not isHeader and QuestIDAt(entry) == questID then
+            return entry
+        end
+    end
+    return nil
+end
 
 -- ===========================================================================
 -- Tooltip: mob -> quest lines
@@ -61,7 +178,7 @@ local function AnnotateTooltip(tooltip)
     if not list then return end
     for _, o in ipairs(list) do
         if o.done or (o.need > 0 and o.have >= o.need) then
-            tooltip:AddLine(o.title .. " (done)", 0.6, 0.6, 0.6)
+            tooltip:AddLine(o.title .. " (" .. COMPLETE .. ")", 0.6, 0.6, 0.6)
         else
             tooltip:AddLine(o.title .. " - " .. o.have .. "/" .. o.need, 1.0, 0.82, 0.0)
         end
@@ -88,27 +205,11 @@ local panel = CreateFrame("Frame", "QuestTrackerFrame", UIParent)
 panel:SetWidth(220)
 panel:SetHeight(40)
 panel:SetMovable(true)
-panel:EnableMouse(true)
-panel:RegisterForDrag("LeftButton")
 panel:SetClampedToScreen(true)
-panel:SetScript("OnDragStart", function() panel:StartMoving() end)
-panel:SetScript("OnDragStop", function()
-    panel:StopMovingOrSizing()
-    local point, _, relPoint, x, y = panel:GetPoint()
-    QuestTrackerDB.pos = { point = point, relPoint = relPoint, x = x, y = y }
-end)
-
--- Classic WoW look: Morpheus (the ornate font WoW uses for quest-log TITLES) for the
--- header + quest titles; Friz Quadrata (the standard quest-body font) for objectives.
-local FONT_TITLE = "Fonts\\MORPHEUS.TTF"
-local FONT_BODY  = "Fonts\\FRIZQT__.TTF"
-local SIZE_HEADER, SIZE_TITLE, SIZE_OBJ = 15, 13, 11
-local STEP_TITLE, STEP_OBJ = 15, 13     -- line heights tuned to the above sizes
-local function ClassicFont(fs, path, size)
-    fs:SetFont(path, size)
-    fs:SetShadowColor(0, 0, 0, 1)       -- the drop shadow is a big part of the old-school feel
-    fs:SetShadowOffset(1, -1)
-end
+-- The panel body takes NO mouse input: it is content-sized and used to swallow
+-- every click over that whole area of the screen. Only the drag cross and the
+-- per-quest click frames are interactive.
+panel:EnableMouse(false)
 
 -- Sit far-right, but clear the two right action bars (Interface > Action Bars:
 -- "Right Bar" = MultiBarRight, "Right Bar 2" = MultiBarLeft). Only whichever are
@@ -131,83 +232,200 @@ end
 
 local header = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 header:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
-ClassicFont(header, FONT_TITLE, SIZE_HEADER)
+ClassicFont(header)
 header:SetText("|cff33ff99Quests|r")
 
-local lines = {}   -- FontString pool
+-- The drag handle. Built from a core texture Blizzard itself uses for the quest
+-- log's collapsed headers, so it is guaranteed to exist in 2.4.3.
+local cross = CreateFrame("Button", "QuestTrackerDragCross", panel)
+cross:SetWidth(CROSS_SIZE)
+cross:SetHeight(CROSS_SIZE)
+cross:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, 2)
+cross:SetNormalTexture("Interface\\Buttons\\UI-PlusButton-Up")
+cross:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Hilight", "ADD")
+cross:EnableMouse(true)
+cross:RegisterForDrag("LeftButton")
+cross:SetScript("OnDragStart", function()
+    if not QuestTrackerDB.locked then panel:StartMoving() end
+end)
+cross:SetScript("OnDragStop", function()
+    panel:StopMovingOrSizing()
+    local point, _, relPoint, x, y = panel:GetPoint()
+    QuestTrackerDB.pos = { point = point, relPoint = relPoint, x = x, y = y }
+end)
+cross:SetScript("OnEnter", function()
+    GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Quest Tracker", 1, 1, 1)
+    GameTooltip:AddLine("Drag here to move the tracker.", 0.8, 0.8, 0.8, true)
+    GameTooltip:AddLine("Double-click a quest to open it in your quest log.", 0.8, 0.8, 0.8, true)
+    GameTooltip:Show()
+end)
+cross:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+local lines = {}    -- FontString pool
 local function GetLine(i)
     if not lines[i] then
         lines[i] = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         lines[i]:SetJustifyH("LEFT")
+        ClassicFont(lines[i])
     end
     return lines[i]
 end
 
-local function FindQuestByTitle(wanted)
-    for entry = 1, GetNumQuestLogEntries() do
-        local title, level, _, _, isHeader, _, isComplete = GetQuestLogTitle(entry)
-        if not isHeader and title == wanted then
-            return entry, level, isComplete
+-- ===========================================================================
+-- Opening a quest in the log
+-- ===========================================================================
+-- Selecting is deferred through pendingOpen rather than done inline, because
+-- ExpandQuestHeader is not guaranteed to be reflected in GetQuestLogTitle before
+-- the next QUEST_LOG_UPDATE -- Blizzard's own QuestLog_SetSelection expands and
+-- then bails out, waiting for that event. Resolving by quest ID on each attempt
+-- means a stale view can only delay the jump, never send it to the wrong quest.
+local pendingOpen, pendingUntil = nil, 0
+
+local function TryOpenPending()
+    if not pendingOpen then return end
+    local index = IndexForQuestID(pendingOpen)
+    if not index then
+        if GetTime() > pendingUntil then
+            pendingOpen = nil
+            Msg("that quest is no longer in your log.")
         end
+        return
     end
-    return nil
+    pendingOpen = nil
+    QuestLogListScrollFrameScrollBar:SetValue((index - 1) * (QUESTLOG_QUEST_HEIGHT or 16))
+    QuestLog_SetSelection(index)
+    QuestLog_Update()
+end
+
+local function OpenQuestInLog(questID)
+    if not questID then return end
+    ShowUIPanel(QuestLogFrame)
+    -- Only disturb the player's collapse state when the quest is actually hidden
+    -- inside a collapsed header.
+    if not IndexForQuestID(questID) then
+        ExpandQuestHeader(0)
+    end
+    pendingOpen  = questID
+    pendingUntil = GetTime() + 2
+    TryOpenPending()
+end
+
+-- One invisible click frame per tracked quest, covering its title + objectives.
+--
+-- Double-click is detected by hand rather than with OnDoubleClick. The handler
+-- does exist in 2.4.3 (it is in UI.xsd), but a manual GetTime() comparison has
+-- no dependency on how it interacts with OnClick, and a single click must stay
+-- inert either way.
+local DOUBLE_CLICK_WINDOW = 0.4
+local blocks = {}
+local function GetBlock(i)
+    if not blocks[i] then
+        local b = CreateFrame("Button", nil, panel)
+        b:RegisterForClicks("LeftButtonUp")
+        b:SetScript("OnClick", function()
+            local now = GetTime()
+            if this.lastClick and (now - this.lastClick) < DOUBLE_CLICK_WINDOW then
+                this.lastClick = nil
+                OpenQuestInLog(this.questID)
+            else
+                this.lastClick = now
+            end
+        end)
+        blocks[i] = b
+    end
+    return blocks[i]
 end
 
 local function RefreshPanel()
-    QuestTrackerDB.watched = QuestTrackerDB.watched or {}
-    local lineNum = 0
-    local maxWidth = header:GetStringWidth()
-    local y = -18
+    local list = Watched()
+    local map = BuildIndexMap()
+    local logLoaded = GetNumQuestLogEntries() > 0
 
-    for _, wanted in ipairs(QuestTrackerDB.watched) do
-        local entry, level, isComplete = FindQuestByTitle(wanted)
+    -- Drop quests we watched and have since turned in or abandoned. Gated on
+    -- "seen this session" so a not-yet-populated log at login cannot wipe the
+    -- saved list.
+    local i = 1
+    while i <= table.getn(list) do
+        local id = list[i]
+        if not map[id] and logLoaded and seenThisSession[id] then
+            table.remove(list, i)
+        else
+            i = i + 1
+        end
+    end
+
+    local lineNum, blockNum = 0, 0
+    local maxWidth = header:GetStringWidth() + CROSS_SIZE + 6
+    local y = HEADER_Y
+
+    for w = 1, table.getn(list) do
+        local entry = map[list[w]]
         if entry then
+            local title, _, _, _, _, _, isComplete = GetQuestLogTitle(entry)
+            local blockTop = y
+
             lineNum = lineNum + 1
             local titleLine = GetLine(lineNum)
-            ClassicFont(titleLine, FONT_TITLE, SIZE_TITLE)
             titleLine:ClearAllPoints()
             titleLine:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, y)
             if isComplete and isComplete > 0 then
-                titleLine:SetText("[" .. level .. "] " .. wanted .. " (complete)")
-                titleLine:SetTextColor(0.2, 1.0, 0.2)
+                titleLine:SetText(title .. " (" .. COMPLETE .. ")")
+                titleLine:SetTextColor(TITLE_DONE_R, TITLE_DONE_G, TITLE_DONE_B)
+            elseif isComplete and isComplete < 0 then
+                titleLine:SetText(title .. " (" .. FAILED .. ")")
+                titleLine:SetTextColor(TITLE_TODO_R, TITLE_TODO_G, TITLE_TODO_B)
             else
-                titleLine:SetText("[" .. level .. "] " .. wanted)
-                titleLine:SetTextColor(1.0, 0.82, 0.0)
+                titleLine:SetText(title)
+                titleLine:SetTextColor(TITLE_TODO_R, TITLE_TODO_G, TITLE_TODO_B)
             end
             titleLine:Show()
             if titleLine:GetStringWidth() > maxWidth then maxWidth = titleLine:GetStringWidth() end
-            y = y - STEP_TITLE
+            y = y - LINE_STEP
 
             for obj = 1, GetNumQuestLeaderBoards(entry) do
                 local text, _, done = GetQuestLogLeaderBoard(obj, entry)
                 if text then
                     lineNum = lineNum + 1
                     local objLine = GetLine(lineNum)
-                    ClassicFont(objLine, FONT_BODY, SIZE_OBJ)
                     objLine:ClearAllPoints()
                     objLine:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, y)
-                    objLine:SetText(text)
+                    objLine:SetText(" - " .. text)
                     if done then
-                        objLine:SetTextColor(0.5, 0.5, 0.5)
+                        objLine:SetTextColor(OBJ_DONE_R, OBJ_DONE_G, OBJ_DONE_B)
                     else
-                        objLine:SetTextColor(0.85, 0.85, 0.85)
+                        objLine:SetTextColor(OBJ_TODO_R, OBJ_TODO_G, OBJ_TODO_B)
                     end
                     objLine:Show()
-                    if objLine:GetStringWidth() + 10 > maxWidth then maxWidth = objLine:GetStringWidth() + 10 end
-                    y = y - STEP_OBJ
+                    if objLine:GetStringWidth() + 10 > maxWidth then
+                        maxWidth = objLine:GetStringWidth() + 10
+                    end
+                    y = y - LINE_STEP
                 end
             end
-            y = y - 4   -- gap between quests
+
+            blockNum = blockNum + 1
+            local block = GetBlock(blockNum)
+            block.questID = list[w]
+            block.lastClick = nil
+            block:ClearAllPoints()
+            block:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, blockTop)
+            block:SetHeight(blockTop - y)
+            block:Show()
+
+            y = y - QUEST_GAP
         end
     end
 
-    for i = lineNum + 1, table.getn(lines) do
-        lines[i]:Hide()
-    end
+    for n = lineNum + 1, table.getn(lines) do lines[n]:Hide() end
+    for n = blockNum + 1, table.getn(blocks) do blocks[n]:Hide() end
 
     -- scale the panel to its content
-    panel:SetWidth(math.max(maxWidth + 4, 100))
-    panel:SetHeight(math.max(-y + 4, 20))
+    local width = maxWidth + 4
+    if width < 100 then width = 100 end
+    panel:SetWidth(width)
+    panel:SetHeight(-y + 4)
+    for n = 1, blockNum do blocks[n]:SetWidth(width) end
 
     -- Unless the user dragged it somewhere, keep the auto-position clearing whichever
     -- right action bars are live (picks up bar on/off changes on the next quest update).
@@ -216,38 +434,104 @@ local function RefreshPanel()
     end
 end
 
-local function IsTracked(title)
-    QuestTrackerDB.watched = QuestTrackerDB.watched or {}
-    for i, t in ipairs(QuestTrackerDB.watched) do
-        if t == title then return i end
-    end
-    return nil
-end
+-- ===========================================================================
+-- Quest log integration -- the 1:1 half
+-- ===========================================================================
 
-local function ToggleTracked(title)
-    local at = IsTracked(title)
+-- We own the checkmark. Blizzard's QuestLog_Update has already shown or hidden
+-- each row's Check from ITS list by the time we run, so we set every visible row
+-- explicitly -- show AND hide -- and its list becomes irrelevant. The anchor
+-- maths below is Blizzard's own, copied from QuestLogFrame.lua:216-238 so a
+-- tracked quest's tick lands exactly where a stock one would.
+local function DrawChecks()
+    local offset = FauxScrollFrame_GetOffset(QuestLogListScrollFrame)
+    for i = 1, (QUESTS_DISPLAYED or 6) do
+        local check = getglobal("QuestLogTitle" .. i .. "Check")
+        if check then
+            local questIndex = i + offset
+            local title, _, _, _, isHeader = GetQuestLogTitle(questIndex)
+            local id = nil
+            if title and not isHeader then id = QuestIDAt(questIndex) end
+
+            if not TrackedAt(id) then
+                check:Hide()
+            else
+                local questLogTitle  = getglobal("QuestLogTitle" .. i)
+                local questTitleTag  = getglobal("QuestLogTitle" .. i .. "Tag")
+                local questNormalText = getglobal("QuestLogTitle" .. i .. "NormalText")
+                if not (questLogTitle and questTitleTag and questNormalText) then
+                    -- verified present in 2.4.3's QuestLogFrame.xml; guarded only so a
+                    -- surprise here cannot spam an error on every quest log redraw
+                    check:Hide()
+                    return
+                end
+                local tagText = questTitleTag:GetText()
+                if tagText and tagText ~= "" then
+                    local tempWidth = 275 - 15 - questTitleTag:GetWidth()
+                    QuestLogDummyText:SetText("  " .. title)
+                    local textWidth = QuestLogDummyText:GetWidth()
+                    if textWidth > tempWidth then textWidth = tempWidth end
+                    if questNormalText:GetWidth() + 24 < 275 then
+                        check:SetPoint("LEFT", questLogTitle, "LEFT", textWidth + 24, 0)
+                    else
+                        check:SetPoint("LEFT", questLogTitle, "LEFT", textWidth + 10, 0)
+                    end
+                else
+                    if questNormalText:GetWidth() + 24 < 275 then
+                        check:SetPoint("LEFT", questNormalText, "LEFT", questNormalText:GetWidth() + 24, 0)
+                    else
+                        check:SetPoint("LEFT", questNormalText, "LEFT", questNormalText:GetWidth() - 10, 0)
+                    end
+                end
+                check:Show()
+            end
+        end
+    end
+end
+hooksecurefunc("QuestLog_Update", DrawChecks)
+
+local function ToggleTracked(questIndex)
+    local id = QuestIDAt(questIndex)
+    if not id then return end
+    local at = TrackedAt(id)
     if at then
-        table.remove(QuestTrackerDB.watched, at)
-        Msg("untracked: " .. title)
+        table.remove(Watched(), at)
     else
-        table.insert(QuestTrackerDB.watched, title)
-        Msg("tracking: " .. title)
+        if GetNumQuestLeaderBoards(questIndex) == 0 then
+            UIErrorsFrame:AddMessage(QUEST_WATCH_NO_OBJECTIVES, 1.0, 0.1, 0.1, 1.0)
+            return
+        end
+        table.insert(Watched(), id)
     end
     RefreshPanel()
 end
 
--- shift-click in the quest log toggles OUR tracker
-hooksecurefunc("QuestLogTitleButton_OnClick", function(button)
-    if not IsShiftKeyDown() then return end
+-- REPLACED, not hooked. A post-hook would run in addition to Blizzard's own
+-- watch toggle, which is exactly the desync this version exists to fix. This is
+-- Blizzard's QuestLogFrame.lua:484 verbatim -- including falling through to
+-- select the quest after a shift-click -- except that the QUESTWATCHTOGGLE
+-- branch drives our list, and the 5-quest cap error is gone with it.
+function QuestLogTitleButton_OnClick(button)
     local questIndex = this:GetID() + FauxScrollFrame_GetOffset(QuestLogListScrollFrame)
-    local title, _, _, _, isHeader = GetQuestLogTitle(questIndex)
-    if title and not isHeader then
-        ToggleTracked(title)
+    if IsModifiedClick() then
+        if this.isHeader then return end
+        if IsModifiedClick("CHATLINK") and ChatFrameEditBox:IsVisible() then
+            local questLink = GetQuestLink(questIndex)
+            if questLink then ChatEdit_InsertLink(questLink) end
+        elseif IsModifiedClick("QUESTWATCHTOGGLE") then
+            ToggleTracked(questIndex)
+        end
     end
-end)
+    QuestLog_SetSelection(questIndex)
+    QuestLog_Update()
+end
 
 -- ===========================================================================
 -- Events / restore
+--
+-- Nothing has to be "re-applied" at login: the watch list is quest IDs, and
+-- every refresh resolves IDs against the live log. That is also why the tracker
+-- survives a relog when Blizzard's own list never does.
 -- ===========================================================================
 local driver = CreateFrame("Frame")
 driver:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -260,25 +544,46 @@ driver:SetScript("OnEvent", function()
             QuestTrackerDB.pos.x, QuestTrackerDB.pos.y)
     end
     RefreshPanel()
+    TryOpenPending()
 end)
 
 if not QuestTrackerDB.pos then
     ApplyDefaultAnchor()
 end
 
--- /qt — tooltip self-test; /qt clear — untrack everything
+-- /qt — status; /qt clear — untrack everything; /qt lock|unlock; /qt reset
 SLASH_QUESTTRACKER1 = "/qt"
 SlashCmdList["QUESTTRACKER"] = function(msg)
-    if msg == "clear" then
+    local arg = string.lower(msg or "")
+
+    if arg == "clear" then
         QuestTrackerDB.watched = {}
         RefreshPanel()
+        QuestLog_Update()
         Msg("tracker cleared.")
-        return
+
+    elseif arg == "lock" then
+        QuestTrackerDB.locked = true
+        Msg("tracker locked. /qt unlock to move it again.")
+
+    elseif arg == "unlock" then
+        QuestTrackerDB.locked = nil
+        Msg("tracker unlocked — drag it by the cross on the header.")
+
+    elseif arg == "reset" then
+        QuestTrackerDB.pos = nil
+        ApplyDefaultAnchor()
+        Msg("position reset.")
+
+    else
+        if dirty then RebuildCache() end
+        local mobs = 0
+        for _ in pairs(cache) do mobs = mobs + 1 end
+        Msg(table.getn(Watched()) .. " quest(s) tracked, " .. mobs ..
+            " mob name(s) on tooltip watch. Shift-click quests in the log to track them (no cap).")
+        Msg("/qt clear | lock | unlock | reset")
     end
-    if dirty then RebuildCache() end
-    local mobs = 0
-    for _ in pairs(cache) do mobs = mobs + 1 end
-    Msg(mobs .. " mob name(s) on tooltip watch. Shift-click quests in the log to track them (no cap). /qt clear to reset.")
 end
 
-Msg("v2.0 loaded — custom tracker panel, no quest cap. Shift-click quests to track; drag the panel to move it.")
+Msg("v" .. QUESTTRACKER_VERSION .. " loaded — shift-click quests in the log to track, " ..
+    "double-click one here to open it, drag by the cross.")

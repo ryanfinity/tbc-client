@@ -1,6 +1,6 @@
 ## Interface: 20400
 ## Title: QuestTracker
-## Notes: Shows your quest (with kill progress) on mob tooltips.
+## Notes: Uncapped quest tracker kept 1:1 with the quest log, plus quest mobs on tooltips.
 ## Author: Lankhmar & Claude
 ## SavedVariablesPerCharacter: QuestTrackerDB
 QuestTracker.lua
