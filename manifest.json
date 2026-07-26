@@ -1,5 +1,5 @@
 {
-  "contentVersion": "2026.07.26-2210",
+  "contentVersion": "2026.07.26-2223",
   "baseUrl": "https://raw.githubusercontent.com/ryanfinity/tbc-client/main/dist/",
   "realmlist": "",
   "launcher": {
@@ -39,8 +39,8 @@
         {
           "path": "Interface/AddOns/QuestTracker/QuestTracker.lua",
           "src": "QuestTracker/QuestTracker.lua",
-          "sha256": "022e95e863b12f7383accded6506b134de9d8ff1995fb63eb58aaf0e9e49c852",
-          "size": 23746
+          "sha256": "1bec3332ac651fc007284b15e12bb96bdae7b806cc652a39d1787a30a41a021c",
+          "size": 25309
         },
         {
           "path": "Interface/AddOns/QuestTracker/QuestTracker.toc",

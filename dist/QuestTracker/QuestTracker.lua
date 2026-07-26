@@ -230,10 +230,48 @@ local function ApplyDefaultAnchor()
     panel:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -RightBarInset(), -250)
 end
 
+-- The panel is ALWAYS anchored by its top-right corner, wherever it was dragged
+-- to. That is what pins the header while the list grows downward: the panel is
+-- resized to fit its content, so an anchor that is not a TOP* point makes
+-- SetHeight expand upward as well -- the "grows in both directions" report.
+-- StopMovingOrSizing does not guarantee it leaves a TOP* point behind, so we
+-- never store what it produced; we store absolute edges and re-anchor ourselves.
+-- Right-anchoring also matches Blizzard's own QuestWatchFrame and holds the drag
+-- cross still while the width changes.
+local function AnchorTopRight(right, top)
+    panel:ClearAllPoints()
+    panel:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", right, top)
+end
+
+local function SavePosition()
+    local right, top = panel:GetRight(), panel:GetTop()
+    if not (right and top) then return false end
+    QuestTrackerDB.pos = { right = right, top = top }
+    AnchorTopRight(right, top)
+    return true
+end
+
+local normalisePending = false
+local function ApplyStoredPosition()
+    local p = QuestTrackerDB.pos
+    if p and p.right and p.top then
+        AnchorTopRight(p.right, p.top)
+    elseif p and p.point then
+        -- v3.0 stored whatever StopMovingOrSizing left behind. Apply it once so
+        -- the tracker does not jump, then convert to edges on the next layout.
+        panel:ClearAllPoints()
+        panel:SetPoint(p.point, UIParent, p.relPoint, p.x, p.y)
+        normalisePending = true
+    else
+        ApplyDefaultAnchor()
+    end
+end
+
 local header = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 header:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
 ClassicFont(header)
-header:SetText("|cff33ff99Quests|r")
+header:SetText("Quest Tracker")
+header:SetTextColor(TITLE_TODO_R, TITLE_TODO_G, TITLE_TODO_B)
 
 -- The drag handle. Built from a core texture Blizzard itself uses for the quest
 -- log's collapsed headers, so it is guaranteed to exist in 2.4.3.
@@ -250,8 +288,7 @@ cross:SetScript("OnDragStart", function()
 end)
 cross:SetScript("OnDragStop", function()
     panel:StopMovingOrSizing()
-    local point, _, relPoint, x, y = panel:GetPoint()
-    QuestTrackerDB.pos = { point = point, relPoint = relPoint, x = x, y = y }
+    SavePosition()
 end)
 cross:SetScript("OnEnter", function()
     GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
@@ -427,9 +464,14 @@ local function RefreshPanel()
     panel:SetHeight(-y + 4)
     for n = 1, blockNum do blocks[n]:SetWidth(width) end
 
-    -- Unless the user dragged it somewhere, keep the auto-position clearing whichever
-    -- right action bars are live (picks up bar on/off changes on the next quest update).
-    if not QuestTrackerDB.pos then
+    -- Re-anchor AFTER resizing, so the stored top/right edges are the ones that
+    -- survive: the panel keeps its top line exactly where it was and the new
+    -- content extends downward.
+    if normalisePending then
+        if SavePosition() then normalisePending = false end
+    elseif not QuestTrackerDB.pos then
+        -- Never dragged: keep the auto-position clearing whichever right action bars
+        -- are live (picks up bar on/off changes on the next quest update).
         ApplyDefaultAnchor()
     end
 end
@@ -538,18 +580,14 @@ driver:RegisterEvent("PLAYER_ENTERING_WORLD")
 driver:RegisterEvent("QUEST_LOG_UPDATE")
 driver:SetScript("OnEvent", function()
     dirty = true
-    if event == "PLAYER_ENTERING_WORLD" and QuestTrackerDB.pos then
-        panel:ClearAllPoints()
-        panel:SetPoint(QuestTrackerDB.pos.point, UIParent, QuestTrackerDB.pos.relPoint,
-            QuestTrackerDB.pos.x, QuestTrackerDB.pos.y)
+    if event == "PLAYER_ENTERING_WORLD" then
+        ApplyStoredPosition()
     end
     RefreshPanel()
     TryOpenPending()
 end)
 
-if not QuestTrackerDB.pos then
-    ApplyDefaultAnchor()
-end
+ApplyStoredPosition()
 
 -- /qt — status; /qt clear — untrack everything; /qt lock|unlock; /qt reset
 SLASH_QUESTTRACKER1 = "/qt"
@@ -572,6 +610,7 @@ SlashCmdList["QUESTTRACKER"] = function(msg)
 
     elseif arg == "reset" then
         QuestTrackerDB.pos = nil
+        normalisePending = false
         ApplyDefaultAnchor()
         Msg("position reset.")
 
