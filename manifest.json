@@ -1,5 +1,5 @@
 {
-  "contentVersion": "2026.07.29-2202",
+  "contentVersion": "2026.07.29-2220",
   "baseUrl": "https://raw.githubusercontent.com/ryanfinity/tbc-client/main/dist/",
   "realmlist": "",
   "launcher": {
@@ -18,8 +18,8 @@
         {
           "path": "Interface/AddOns/MercPanel/MercPanel.lua",
           "src": "MercPanel/MercPanel.lua",
-          "sha256": "41c3f1fef292772119ca80c1965be24a02abb3369519fd5924c46d8cbb1f2032",
-          "size": 34769
+          "sha256": "4f1ee26b0f9258f35d289449570cd4f62852aa2c319bd2988d4a6330a1876693",
+          "size": 35407
         },
         {
           "path": "Interface/AddOns/MercPanel/MercPanel.toc",

@@ -1,4 +1,4 @@
--- MercPanel v1.4 -- mercenary squad control bars
+-- MercPanel v1.5 -- mercenary squad control bars
 --
 --  * Marker strip  (MercMarkerBar) : the 8 raid target icons + clear, docked under
 --    the target frame. Left-click marks your target, right-click clears it.
@@ -23,7 +23,7 @@
 --  2.4.3 notes: no print()/wipe(); script handlers use the implicit globals
 --  (this / event / arg1); getglobal() instead of _G[].
 
-MERCPANEL_VERSION = "1.4"
+MERCPANEL_VERSION = "1.5"
 
 -- Transport. If dot-commands ever stop working over whisper, this is the ONE
 -- line to change (e.g. to "SAY"). Whisper-to-self is used because an unhandled
@@ -57,15 +57,25 @@ local CFG = {
       tip = "Seconds the tank counts down in party chat before pulling a Skull." },
 }
 
+-- Displayed LEFT TO RIGHT in this order. Deliberately the reverse of Blizzard's
+-- own raid-target numbering (Ryan's call 2026-07-29): Skull first, because it is
+-- the one used most -- it is the tank's pull and focus-fire mark -- so it sits
+-- under the cursor's resting position instead of at the far end of the strip.
+-- The clear button stays last, after Star.
+--
+-- `idx` is the real raid-target index and is what everything derives from: the
+-- icon's cell in UI-RaidTargetingIcons, the tooltip, and the mark actually set.
+-- So the display order is purely this table's order -- reordering it is safe and
+-- needs no other change.
 local MARKERS = {
-    { idx = 1, name = "Star" },
-    { idx = 2, name = "Circle",   note = "Rogue Blind target." },
-    { idx = 3, name = "Diamond",  note = "Warlock: Seduce (humanoid) or Banish (demon/elemental)." },
-    { idx = 4, name = "Triangle" },
-    { idx = 5, name = "Moon",     note = "Mage Polymorph target." },
-    { idx = 6, name = "Square" },
-    { idx = 7, name = "Cross" },
     { idx = 8, name = "Skull",    note = "Tank pulls it, squad focus-fires it and never switches off." },
+    { idx = 7, name = "Cross" },
+    { idx = 6, name = "Square" },
+    { idx = 5, name = "Moon",     note = "Mage Polymorph target." },
+    { idx = 4, name = "Triangle" },
+    { idx = 3, name = "Diamond",  note = "Warlock: Seduce (humanoid) or Banish (demon/elemental)." },
+    { idx = 2, name = "Circle",   note = "Rogue Blind target." },
+    { idx = 1, name = "Star" },
 }
 
 -- ===========================================================================
