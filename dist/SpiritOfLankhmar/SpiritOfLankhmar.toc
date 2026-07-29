@@ -1,0 +1,5 @@
+## Interface: 20400
+## Title: Spirit of Lankhmar
+## Notes: Rewrites the Spirit of Lankhmar buff tooltip with this realm's current QoL rules.
+## Author: Lankhmar & Claude
+SpiritOfLankhmar.lua

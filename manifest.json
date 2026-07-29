@@ -1,5 +1,5 @@
 {
-  "contentVersion": "2026.07.26-2223",
+  "contentVersion": "2026.07.29-1647",
   "baseUrl": "https://raw.githubusercontent.com/ryanfinity/tbc-client/main/dist/",
   "realmlist": "",
   "launcher": {
@@ -47,6 +47,27 @@
           "src": "QuestTracker/QuestTracker.toc",
           "sha256": "897ea4f69ca73e5523f4c73b106ed40c154769a7c7da489d9606968b517cf673",
           "size": 226
+        }
+      ]
+    },
+    {
+      "id": "SpiritOfLankhmar",
+      "name": "Spirit of Lankhmar",
+      "description": "keeps the realm-rules buff tooltip up to date",
+      "required": true,
+      "root": "Interface/AddOns/SpiritOfLankhmar",
+      "files": [
+        {
+          "path": "Interface/AddOns/SpiritOfLankhmar/SpiritOfLankhmar.lua",
+          "src": "SpiritOfLankhmar/SpiritOfLankhmar.lua",
+          "sha256": "de5fc4116f49ddf8778cc38d572edea909bdb7d90bc226bb3c90b668dd1e16b1",
+          "size": 4145
+        },
+        {
+          "path": "Interface/AddOns/SpiritOfLankhmar/SpiritOfLankhmar.toc",
+          "src": "SpiritOfLankhmar/SpiritOfLankhmar.toc",
+          "sha256": "4155157f67816bbf1e4533c456f8f9a5cf9d5343bda12ca51211d6c76e742a9a",
+          "size": 191
         }
       ]
     }
