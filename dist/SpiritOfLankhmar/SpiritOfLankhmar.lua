@@ -27,6 +27,23 @@
   (measured in the client's own BuffFrame.lua, not assumed).
 ------------------------------------------------------------------------------]]
 
+-- What the buff is CALLED IN THE CLIENT, which is what the tooltip's first line
+-- reads before we touch it.
+--
+-- ⚠️ The client calls it "QAEnchant Ring +12 Spell Damage". The buff is spell
+-- 36282, an unused Blizzard QA spell that the server repurposes as the realm's
+-- QoL aura. Renaming it properly would mean shipping a modified Spell.dbc, and
+-- the 2.4.3 client rejected every attempt at that with "Error #131 File Corrupt"
+-- (see docs/SPIRIT_OF_LANKHMAR.md). Riding a spell the client already knows
+-- needs no client patch at all -- the icon (Spell_Holy_GreaterHeal) and the aura
+-- are stock, and this add-on supplies the name and the rules text.
+--
+-- So THIS add-on is what makes the buff readable. Without it the player sees a
+-- buff called "QAEnchant Ring +12 Spell Damage", which is why it ships as a
+-- required component.
+local CLIENT_BUFF_NAME = "QAEnchant Ring +12 Spell Damage"
+
+-- What we call it.
 local BUFF_NAME = "Spirit of Lankhmar"
 
 -- The header line, in the same gold the client uses for a buff title.
@@ -57,7 +74,9 @@ local RULES = {
 ----------------------------------------------------------------------------]]
 local function Decorate()
     local title = GameTooltipTextLeft1 and GameTooltipTextLeft1:GetText()
-    if title ~= BUFF_NAME then
+    -- Accept our own name too, so that if a client patch ever does rename the
+    -- spell this keeps working instead of silently doing nothing.
+    if title ~= CLIENT_BUFF_NAME and title ~= BUFF_NAME then
         return
     end
 

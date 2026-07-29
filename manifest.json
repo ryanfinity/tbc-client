@@ -1,5 +1,5 @@
 {
-  "contentVersion": "2026.07.29-1647",
+  "contentVersion": "2026.07.29-2202",
   "baseUrl": "https://raw.githubusercontent.com/ryanfinity/tbc-client/main/dist/",
   "realmlist": "",
   "launcher": {
@@ -60,8 +60,8 @@
         {
           "path": "Interface/AddOns/SpiritOfLankhmar/SpiritOfLankhmar.lua",
           "src": "SpiritOfLankhmar/SpiritOfLankhmar.lua",
-          "sha256": "de5fc4116f49ddf8778cc38d572edea909bdb7d90bc226bb3c90b668dd1e16b1",
-          "size": 4145
+          "sha256": "eded1fcac34d1db8e943a76ebd831e718030b0d9a8dbb846373d9031d34d1c37",
+          "size": 5249
         },
         {
           "path": "Interface/AddOns/SpiritOfLankhmar/SpiritOfLankhmar.toc",
